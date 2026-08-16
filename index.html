@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shekhar Modz — Key Panel</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  :root { --pink:#FF69B4; --dark:#0f1115; --card:#1a1d24; --line:#2a2f3a; --txt:#e8e8ee; --mut:#8b90a0; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Segoe UI,Roboto,sans-serif; background:var(--dark); color:var(--txt); }
+  header { padding:14px 20px; background:linear-gradient(90deg,#ff69b4,#d6337c); font-weight:800; font-size:20px; letter-spacing:.5px; }
+  .wrap { max-width:1000px; margin:20px auto; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .card h2 { margin:0 0 12px; font-size:15px; color:var(--pink); }
+  label { display:block; font-size:12px; color:var(--mut); margin:8px 0 4px; }
+  input, select, button, textarea { font-size:14px; padding:9px 11px; border:1px solid var(--line); border-radius:8px; background:#12141a; color:var(--txt); }
+  input:focus, select:focus { outline:2px solid var(--pink); }
+  button { cursor:pointer; background:#292e3a; border:1px solid var(--line); }
+  button:hover { background:#333947; }
+  button.pink { background:var(--pink); border-color:var(--pink); color:#1a0d14; font-weight:700; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+  .row > div { flex:1 1 160px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--mut); font-weight:600; }
+  .ok { color:#59d97b; } .bad { color:#ff5d6c; }
+  .mut { color:var(--mut); font-size:12px; }
+  .chip { background:#212633; border-radius:6px; padding:2px 7px; font-family:monospace; font-size:12px; }
+  textarea { width:100%; min-height:130px; font-family:monospace; font-size:12px; }
+  #authBox textarea { min-height:200px; }
+  .hidden { display:none !important; }
+  .banner { background:#20242d; border-left:4px solid var(--pink); padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:14px; }
+  #search { width:220px; }
+</style>
+</head>
+<body>
+<header>Shekhar Modz — Key Panel</header>
+<div class="wrap">
+
+  <!-- STEP 1: FIREBASE CONFIG -->
+  <div class="card" id="configCard">
+    <h2>1 · Firebase Config</h2>
+    <p class="mut">Firebase Console → ⚙ Project settings → General → Your apps → SDK setup and configuration → &#8220;Config&#8221; ke &lt;script&gt; block se <b>const firebaseConfig = {...}</b> copy karke niche paste karo.</p>
+    <textarea id="configTxt" placeholder='{ "apiKey":"...", "authDomain":"...", "databaseURL":"...", "projectId":"...", "storageBucket":"...", "messagingSenderId":"...", "appId":"..." }'></textarea>
+    <div style="margin-top:10px"><button class="pink" onclick="saveConfig()">Save & Init</button></div>
+  </div>
+
+  <!-- STEP 2: ADMIN LOGIN -->
+  <div class="card hidden" id="authCard">
+    <h2>2 · Admin Login</h2>
+    <p class="mut">Login karo us email se jo tumne <b>Firebase Console → Build → Authentication → Add user</b> me banaya hai. Sirf wohi email keys likh sakta hai (database.rules.json me whitelist kiya hua).</p>
+    <div class="row">
+      <div><input id="admEmail" type="email" placeholder="admin@youremail.com"></div>
+      <div><input id="admPass" type="password" placeholder="password"></div>
+      <div><button class="pink" onclick="login()">Login</button></div>
+    </div>
+    <div class="banner hidden" id="authStatus"></div>
+  </div>
+
+  <!-- STEP 3: KEY MANAGER -->
+  <div class="card hidden" id="panelCard">
+    <h2>3 · Key Manager <span style="float:right;font-weight:400;font-size:12px;color:var(--mut)" id="whoAmI"></span></h2>
+
+    <div class="banner" id="tips">
+      💡 <b>Serial left rakho</b> = key kisi bhi device pe chalegi. <b>Serial bhara</b> = sirf us device pe chalegi (device UUID loader se aata hai). <b>EXP</b> = khaatam date (device par bhi khaata check hota hai).
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Key (khali = auto-generate)</label>
+        <input id="kKey" placeholder="auto: XXXX-XXXX-XXXX-XXXX">
+      </div>
+      <div>
+        <label>Serial / Device UUID (optional)</label>
+        <input id="kSerial" placeholder="device UUID ya khali">
+      </div>
+      <div>
+        <label>Expiry</label>
+        <input id="kExp" type="date">
+      </div>
+      <div>
+        <label>Status</label>
+        <select id="kStatus"><option value="active">active</option><option value="revoked">revoked</option></select>
+      </div>
+      <div>
+        <label>Ke liye din (0 = never)</label>
+        <input id="kDays" type="number" value="0" min="0" step="1">
+      </div>
+      <div><button class="pink" onclick="addKey()">➕ Add / Reset Key</button></div>
+    </div>
+
+    <div class="row" style="margin-top:14px; align-items:center;">
+      <input id="search" placeholder="🔍 search key / serial">
+      <button onclick="loadKeys()">Refresh</button>
+      <button onclick="exportCsv()">⬇ CSV export</button>
+      <button onclick="genBulk()">⚡ Bulk generate (25)</button>
+      <button onclick="logout()" style="margin-left:auto">Logout</button>
+    </div>
+
+    <table style="margin-top:12px">
+      <thead><tr><th>Key</th><th>Serial</th><th>Exp (UTC)</th><th>Status</th><th>Created</th><th></th></tr></thead>
+      <tbody id="keyRows"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>// config + auth + db
+let fbApp=null, auth=null, db=null, ALLOWED_EMAIL="";
+
+function saveConfig(){
+  const cfgTxt=document.getElementById('configTxt').value.trim();
+  let cfg;
+  try{ cfg = cfgTxt.startsWith('{') ? JSON.parse(cfgTxt) : Function('return ('+cfgTxt+')')(); }
+  catch(e){ alert("Config JSON parse nahi hua: "+e.message); return; }
+  if(!cfg.apiKey || !cfg.authDomain || !cfg.databaseURL){ alert("apiKey / authDomain / databaseURL teeno hona chahiye."); return; }
+  localStorage.setItem('sm_fb_config', JSON.stringify(cfg));
+  initFirebase(cfg);
+}
+
+function initFirebase(cfg){
+  fbApp = firebase.initializeApp(cfg);
+  auth = firebase.auth();
+  db = firebase.database();
+  document.getElementById('configCard').classList.add('hidden');
+  document.getElementById('authCard').classList.remove('hidden');
+  auth.onAuthStateChanged(u=>{
+    if(u){
+      document.getElementById('panelCard').classList.remove('hidden');
+      document.getElementById('authCard').classList.add('hidden');
+      document.getElementById('whoAmI').textContent = u.email || u.uid;
+      loadKeys();
+    }
+  });
+}
+
+function login(){
+  const e=document.getElementById('admEmail').value.trim();
+  const p=document.getElementById('admPass').value;
+  if(!e||!p){ alert("Email + password do"); return; }
+  document.getElementById('authStatus').classList.remove('hidden');
+  document.getElementById('authStatus').textContent="Checking...";
+  auth.signInWithEmailAndPassword(e,p).then(()=>{
+    document.getElementById('authStatus').textContent="✓ Logged in";
+  }).catch(err=>{
+    document.getElementById('authStatus').textContent="✗ "+err.message;
+  });
+}
+
+function logout(){ auth.signOut().then(()=>location.reload()); }
+
+// ---- keys ----
+const PREFIX="keys";
+function keyPath(key){ return PREFIX+"/"+key.replace(/[.\#$\[\]/]/g,'-'); }
+
+function ensureAllowed(u){
+  if(!u){ alert("Login pehle karo"); return false; }
+  // console se bhi compare kar sakte ho; database write rule email check karega
+  return true;
+}
+
+function normExp(daysInput, dateInput){
+  const dd=parseInt(document.getElementById('kDays').value)||0;
+  const dv=document.getElementById('kExp').value;
+  if(dd>0) return Math.floor(Date.now()/1000)+dd*86400;
+  if(dv){
+    const t=new Date(dv+"T23:59:59Z").getTime();
+    if(!isNaN(t)) return Math.floor(t/1000);
+  }
+  return 0; // never
+}
+
+function genKey(){
+  const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s="";
+  for(let i=0;i<16;i++){ s+=A[Math.floor(Math.random()*A.length)]; }
+  return s.match(/.{4}/g).join("-");
+}
+
+function addKey(){
+  const u=auth.currentUser; if(!ensureAllowed(u)) return;
+  let key=document.getElementById('kKey').value.trim();
+  if(!key){ key=genKey(); }
+  const serial=document.getElementById('kSerial').value.trim()||"";
+  const status=document.getElementById('kStatus').value;
+  const exp=normExp();
+  const data={
+    serial: serial,
+    exp: exp,
+    status: status,
+    created: firebase.database.ServerValue.TIMESTAMP,
+    note: (serial?"locked":"open")+" key"
+  };
+  db.ref(keyPath(key)).set(data).then(()=>{
+    alert("✓ Key ready: "+key+(serial?" (serial locked)":"")+(exp?" · exp "+new Date(exp*1000).toISOString():" · no exp"));
+    document.getElementById('kKey').value="";
+    loadKeys();
+  }).catch(err=>alert("✗ "+err.message));
+}
+
+function statusOf(k){ return k && k.status==="active" && (!k.exp || k.exp==0 || k.exp> (Date.now()/1000)) ? "active" : (k&&k.status)?k.status:"expired"; }
+
+function loadKeys(){
+  const tbody=document.getElementById('keyRows'); tbody.innerHTML="<tr><td colspan=6 class=mut>Loading...</td></tr>";
+  db.ref(PREFIX).orderByChild('created').once('value').then(snap=>{
+    const rows=[];
+    snap.forEach(c=>{ rows.push({key:c.key, v:c.val()}); });
+    rows.sort((a,b)=>(b.v&&b.v.created||0)-(a.v&&a.v.created||0));
+    renderRows(rows);
+  }).catch(err=>{ tbody.innerHTML="<tr><td colspan=6 class=bad>"+err.message+"</td></tr>"; });
+}
+
+function renderRows(rows){
+  const q=(document.getElementById('search').value||"").toLowerCase();
+  const tbody=document.getElementById('keyRows'); tbody.innerHTML="";
+  rows.filter(r=>!q || r.key.toLowerCase().includes(q) || ((r.v&&r.v.serial)||"").toLowerCase().includes(q))
+   .forEach(r=>{
+    const v=r.v||{};
+    const st=statusOf(v);
+    const tr=document.createElement('tr');
+    tr.innerHTML =
+      '<td class="chip">'+r.key+'</td>'+
+      '<td>'+(v.serial||'<span class=mut>any device</span>')+'</td>'+
+      '<td>'+(v.exp? new Date(v.exp*1000).toISOString().split('T')[0]+' · '+Math.max(0,Math.floor((v.exp-Date.now()/1000)/86400))+'d left' : '<span class=mut>never</span>')+'</td>'+
+      '<td class="'+(st==='active'?'ok':'bad')+'">'+st+'</td>'+
+      '<td class=mut>'+(v.created? new Date(v.created).toISOString().split('T')[0]:'')+'</td>'+
+      '<td><button onclick="toggleStatus(\''+r.key+"',"+JSON.stringify(st)+')">toggle</button> <button onclick="setSerialPrompt(\''+r.key+'\')">serial</button> <button onclick="delKey(\''+r.key+'\')">del</button></td>';
+    tbody.appendChild(tr);
+  });
+  if(tbody.children.length===0) tbody.innerHTML="<tr><td colspan=6 class=mut>Koi key nahi.</td></tr>";
+}
+
+function setSerialPrompt(key){
+  const s=prompt("Serial set / clear karo ("" = clear):");
+  if(s===null) return;
+  db.ref(keyPath(key)).update({serial:s.trim()}).then(()=>loadKeys());
+}
+
+function toggleStatus(key, cur){
+  const nxt = (cur==='active') ? 'revoked' : 'active';
+  db.ref(keyPath(key)).update({status:nxt}).then(()=>loadKeys());
+}
+
+function delKey(key){
+  if(!confirm("Key delete?: "+key)) return;
+  db.ref(keyPath(key)).remove().then(()=>loadKeys());
+}
+
+function exportCsv(){
+  db.ref(PREFIX).once('value').then(snap=>{
+    let csv="key,serial,exp_unix,status\n";
+    snap.forEach(c=>{ const v=c.val()||{}; csv+=c.key+","+(v.serial||"")+","+(v.exp||0)+","+v.status+"\n"; });
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+    a.download="shekhar-keys.csv"; a.click();
+  });
+}
+
+function genBulk(){
+  db.ref(PREFIX).once('value').then(snap=>{
+    const ex=new Set(); snap.forEach(c=>ex.add(c.key));
+    const fresh=[];
+    for(let i=0;i<25;i++){
+      let k=genKey();
+      if(ex.has(k)){ i--; continue; }
+      ex.add(k); fresh.push(k);
+      db.ref(keyPath(k)).set({ serial:"", exp:0, status:"active", created:firebase.database.ServerValue.TIMESTAMP, note:"bulk" });
+    }
+    alert("25 keys bana di (open / no exp):\n"+fresh.join("\n"));
+    loadKeys();
+  });
+}
+
+// compose
+const saved=localStorage.getItem('sm_fb_config');
+if(saved){
+  try{ initFirebase(JSON.parse(saved)); }
+  catch(e){ alert("Stored config invalid — dobara paste karo."); location.reload(); }
+}
+document.addEventListener('input', e=>{ if(e.target.id==='search') loadKeys(); });
+window.saveConfig=saveConfig; window.login=login; window.logout=logout;
+window.addKey=addKey; window.loadKeys=loadKeys; window.exportCsv=exportCsv;
+window.genBulk=genBulk; window.toggleStatus=toggleStatus; window.delKey=delKey;
+window.setSerialPrompt=setSerialPrompt;
+</script>
+</body>
+</html>
