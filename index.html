@@ -157,6 +157,10 @@
 <script>
 let fbApp=null, auth=null, db=null, curPid=null;
 
+// ONLY ye gmail panel login kar sakta hai — baaki sab block
+const ALLOWED_EMAIL='mshekhar324@gmail.com';
+function isAdminEmail(email){ return email && email.toLowerCase()===ALLOWED_EMAIL; }
+
 // ---------- helpers ----------
 const P=()=>('projects/'+curPid);
 const keyPath=k=>P()+'/keys/'+k.replace(/[.\#$\[\]/]/g,'-');
@@ -177,14 +181,29 @@ function initFirebase(cfg){
   db=firebase.database();
   document.getElementById('configCard').classList.add('hidden');
   auth.onAuthStateChanged(u=>{
-    if(u){ showDash(); } else { showAuth(); }
+    if(u){
+      if(isAdminEmail(u.email)){
+        localStorage.setItem('sm_admin_uid',u.uid);
+        showDash();
+      } else {
+        auth.signOut();
+        alert('Access denied — sirf '+ALLOWED_EMAIL+' login kar sakta hai.');
+      }
+    } else { showAuth(); }
     route();
   });
 }
 function showAuth(){ document.getElementById('authCard').classList.remove('hidden'); document.getElementById('dashCard').classList.add('hidden'); document.getElementById('authCard').scrollIntoView(); }
 function login(){
   firebase.auth().signInWithEmailAndPassword(document.getElementById('admEmail').value.trim(),document.getElementById('admPass').value)
-    .then(u=>{ localStorage.setItem('sm_admin_uid',u.user.uid); route(); })
+    .then(u=>{
+      if(!isAdminEmail(u.user.email)){
+        firebase.auth().signOut();
+        alert('Access denied — sirf '+ALLOWED_EMAIL+' login kar sakta hai.');
+        return;
+      }
+      localStorage.setItem('sm_admin_uid',u.user.uid); route();
+    })
     .catch(e=>{ const s=document.getElementById('authStatus'); s.classList.remove('hidden'); s.textContent='✗ '+e.message; });
 }
 function logout(){ firebase.auth().signOut().then(()=>location.reload()); }
